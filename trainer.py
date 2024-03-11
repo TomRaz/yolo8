@@ -8,4 +8,5 @@ results = model.train(data=
                       [
                           '/home/tom/Projects/bv-play-break-detection/service/research/scripts/ball.yaml',
                           '/home/tom/Projects/bv-play-break-detection/service/research/scripts/actions.yaml',
-                            ], epochs=60, imgsz=900)
+                      ], epochs=60, imgsz=900,
+    name="actions_and_ball")

@@ -104,8 +104,11 @@ class BaseTrainer:
         init_seeds(self.args.seed + 1 + RANK, deterministic=self.args.deterministic)
 
         # Dirs
-        self.save_dir = get_save_dir(self.args)
-        self.args.name = self.save_dir.name  # update name for loggers
+        # self.save_dir = get_save_dir(self.args)
+        # self.args.name = self.save_dir.name  # update name for loggers
+        # TODO: extract to config
+        self.args.save_dir = os.path.join("/home/tom/Projects/models_training/detection_yolo8", self.args.name)
+        self.save_dir = Path(self.args.save_dir)
         self.wdir = self.save_dir / "weights"  # weights dir
         if RANK in (-1, 0):
             self.wdir.mkdir(parents=True, exist_ok=True)  # make dir
