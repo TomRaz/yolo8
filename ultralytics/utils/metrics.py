@@ -817,8 +817,6 @@ class DetMetrics(SimpleClass):
         fitness: Computes the fitness score based on the computed detection metrics.
         ap_class_index: Returns a list of class indices sorted by their average precision (AP) values.
         results_dict: Returns a dictionary that maps detection metric keys to their computed values.
-        curves: TODO
-        curves_results: TODO
     """
 
     def __init__(self, save_dir=Path("."), plot=False, on_plot=None, names=()) -> None:

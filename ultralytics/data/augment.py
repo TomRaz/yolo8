@@ -22,7 +22,6 @@ DEFAULT_STD = (1.0, 1.0, 1.0)
 DEFAULT_CROP_FTACTION = 1.0
 
 
-# TODO: we might need a BaseTransform to make all these augments be compatible with both classification and semantic
 class BaseTransform:
     """
     Base class for image transformations.
@@ -861,7 +860,6 @@ class Albumentations:
             labels["instances"].convert_bbox("xywh")
             labels["instances"].normalize(*im.shape[:2][::-1])
             bboxes = labels["instances"].bboxes
-            # TODO: add supports of segments and keypoints
             if self.transform and random.random() < self.p:
                 new = self.transform(image=im, bboxes=bboxes, class_labels=cls)  # transformed
                 if len(new["class_labels"]) > 0:  # skip update if no bbox in new im
@@ -872,7 +870,6 @@ class Albumentations:
         return labels
 
 
-# TODO: technically this is not an augmentation, maybe we should put this to another files
 class Format:
     """
     Formats image annotations for object detection, instance segmentation, and pose estimation tasks. The class

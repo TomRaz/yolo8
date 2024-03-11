@@ -658,7 +658,7 @@ class Model(nn.Module):
             ckpt = self.trainer.best if self.trainer.best.exists() else self.trainer.last
             self.model, _ = attempt_load_one_weight(ckpt)
             self.overrides = self.model.args
-            self.metrics = getattr(self.trainer.validator, "metrics", None)  # TODO: no metrics returned by DDP
+            self.metrics = getattr(self.trainer.validator, "metrics", None)
         return self.metrics
 
     def tune(

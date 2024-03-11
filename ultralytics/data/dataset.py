@@ -364,7 +364,6 @@ def save_dataset_cache_file(prefix, path, x):
         LOGGER.warning(f"{prefix}WARNING ⚠️ Cache directory {path.parent} is not writeable, cache not saved.")
 
 
-# TODO: support semantic segmentation
 class SemanticDataset(BaseDataset):
     """
     Semantic Segmentation Dataset.

@@ -321,7 +321,6 @@ class BaseValidator:
         """Registers plots (e.g. to be consumed in callbacks)"""
         self.plots[Path(name)] = {"data": data, "timestamp": time.time()}
 
-    # TODO: may need to put these following functions into callback
     def plot_val_samples(self, batch, ni):
         """Plots validation samples during training."""
         pass

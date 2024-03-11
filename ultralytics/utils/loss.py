@@ -553,7 +553,6 @@ class v8PoseLoss(v8DetectionLoss):
             (batch_size, max_kpts, keypoints.shape[1], keypoints.shape[2]), device=keypoints.device
         )
 
-        # TODO: any idea how to vectorize this?
         # Fill batched_keypoints with keypoints based on batch_idx
         for i in range(batch_size):
             keypoints_i = keypoints[batch_idx == i]

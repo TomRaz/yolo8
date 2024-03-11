@@ -43,8 +43,6 @@ class DetectionTrainer(BaseTrainer):
         gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
         # it should also return the index of the dataset
         if isinstance(data, (list, tuple)):
-            # TODO TOM: change it to dataset aggregator, that implements get item, call the right dataset and return the right item
-
             return build_aggregate_dataset(self.args, batch, data, mode=mode, rect=mode == "val", stride=gs)
         else:
             return build_yolo_dataset(self.args, batch, data, mode=mode, rect=mode == "val", stride=gs)
@@ -96,17 +94,22 @@ class DetectionTrainer(BaseTrainer):
         # self.args.cls *= (self.args.imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
         # TODO TOM: check NC, do it separately for each head
         self.model.nc = self.datasets[0]["nc"]  # attach number of classes to model
+        self.model.nc = "a"  # attach number of classes to model
         self.model.names = self.datasets[0]["names"]  # attach class names to model
         self.model.args = self.args  # attach hyperparameters to model
-        # TODO: self.model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         """Return a YOLO detection model."""
-        # TODO Tom: change NC setup
-        model = DetectionModel(cfg, nc=10, verbose=verbose and RANK == -1)
-        if weights:
-            model.load(weights)
-        model.split_heads(1)
+        heads = []
+        for i, dataset in enumerate(self.datasets):
+            nc = dataset["nc"]
+            model = DetectionModel(cfg, nc=nc, verbose=verbose and RANK == -1)
+            if weights:
+                model.load(weights)
+            head = model.model[-1]  # Detect() module
+            heads.append(head)
+
+        model.set_heads(heads)
         return model
 
     def get_validator(self, batch_size):

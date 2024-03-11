@@ -302,9 +302,9 @@ class DetectionModel(BaseModel):
             (torch.Tensor): The last output of the model.
         """
         y, dt, embeddings = [], [], []  # outputs
-        # TODO Tom: fix this
         if return_multiple_heads:
-            models = self.model[:-1]
+            num_of_heads = len(self.heads)
+            models = self.model[:-num_of_heads]
         else:
             models = self.model
         for m in models:
@@ -320,11 +320,8 @@ class DetectionModel(BaseModel):
                 embeddings.append(nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
                 if m.i == max(embed):
                     return torch.unbind(torch.cat(embeddings, 1), dim=0)
-        split_head_done = getattr(self, "split_heads_done", False)
         if not return_multiple_heads:
             return x
-        if not split_head_done:
-            return [x]
 
         heads = getattr(self, "heads", None)
         if not heads:
@@ -379,32 +376,17 @@ class DetectionModel(BaseModel):
         """Initialize the loss criterion for the DetectionModel."""
         return v8DetectionLoss(self, head)
 
-    def split_heads(self, num_of_heads):
+    def set_heads(self, heads):
         # self.split_heads_done = False
         # self.heads=[self.model[-1]]
         # return
-        self.split_heads_done = True
         # copy detection heads
-        head = self.model[-1]
-        self.model = self.model
+        self.model = self.model[:-1]
         self.heads = []
-        for i in range(num_of_heads):
-            # TODO Tom: do it separately for each head
+        for head in heads:
             self.heads.append(head)
-            # new_head = deepcopy(head)
-            # self.heads.append(new_head)
+            self.model.append(head)
 
-            # new_head.update_num_of_classes(10)
-            # new_head = Detect(nc=10, ch=head.ch)
-            # new_head.f = head.f
-            # self.heads.append(new_head)
-
-        # self.heads = [deepcopy(detection_layer) for _ in range(num_of_heads)]
-        # for head in self.heads:
-        #     head.update_num_of_classes(10)
-        #
-        # # remove detection layer from the model
-        # self.model = self.model[:-1]
 
     # make sure that calls to half, to, training, etc. are propagated to the heads
     def half(self):

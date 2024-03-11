@@ -456,7 +456,6 @@ class Explorer:
 
     def visualize(self, result):
         """
-        Visualize the results of a query. TODO.
 
         Args:
             result (pyarrow.Table): Table containing the results of a query.
@@ -467,6 +466,5 @@ class Explorer:
         """
         Generate a report of the dataset.
 
-        TODO
         """
         pass
