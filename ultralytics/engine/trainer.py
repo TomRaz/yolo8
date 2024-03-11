@@ -283,7 +283,10 @@ class BaseTrainer:
             self.validators = self.get_validator(batch_size)
             metric_keys = []
             for validator in self.validators:
-                metric_keys += validator.metrics.keys + self.label_loss_items(prefix="val")
+                metrics = validator.metrics.keys
+                # preprend the name of head
+                metrics = [f"{validator.head_name}_{metric}" for metric in metrics]
+                metric_keys += metrics + self.label_loss_items(prefix="val")
             self.metrics = dict(zip(metric_keys, [0] * len(metric_keys)))
             self.ema = ModelEMA(self.model)
             if self.args.plots:
@@ -414,6 +417,7 @@ class BaseTrainer:
 
                 # Validation
                 if self.args.val or final_epoch or self.stopper.possible_stop or self.stop:
+
                     self.metrics, self.fitness = self.validate()
                 self.save_metrics(metrics={**self.label_loss_items(self.tloss), **self.metrics, **self.lr})
                 self.stop |= self.stopper(epoch + 1, self.fitness) or final_epoch
@@ -529,9 +533,15 @@ class BaseTrainer:
         The returned dict is expected to contain "fitness" key.
         """
         metrics = {}
+        fitness_scores = []
         for validator in self.validators:
-            metrics.update(validator(self))
-        fitness = metrics.pop("fitness", -self.loss.detach().cpu().numpy())  # use loss as fitness measure if not found
+            metrics_for_validator = validator(self)
+            fitness = metrics_for_validator.pop("fitness", -self.loss.detach().cpu().numpy())  # use loss as fitness measure if not found
+            fitness_scores.append(fitness)
+            metrics.update({f"{validator.head_name}_{k}": v for k, v in metrics_for_validator.items()})
+
+
+        fitness = sum(fitness_scores) / len(fitness_scores)
         if not self.best_fitness or self.best_fitness < fitness:
             self.best_fitness = fitness
         return metrics, fitness
