@@ -9,12 +9,15 @@ class DatasetAggregator(YOLODataset):
         self.datasets = datasets
 
     def __len__(self):
-        return sum(num_of_samples for dataset, num_of_samples in self.datasets)
+        return sum(num_of_samples for dataset, num_of_samples,_ in self.datasets)
 
     def __getitem__(self, idx):
-        for dataset, max_samples_per_ds in self.datasets:
+        for dataset, max_samples_per_ds, head_name in self.datasets:
             if idx < max_samples_per_ds:
-                return dataset[idx]
+                sample = dataset[idx]
+                sample['head_name'] = head_name
+
+                return sample
             idx -= max_samples_per_ds
         raise IndexError(f"Index {idx} out of range for aggregated dataset")
 
@@ -44,5 +47,5 @@ def build_aggregate_dataset(cfg, batch, datas, mode="train", rect=False, stride=
         samples_per_dataset = min(len(dataset), 100000000)
 
         # TODO: how to do the randomize thing?
-        datasets.append((dataset, samples_per_dataset))
+        datasets.append((dataset, samples_per_dataset, data["head_name"]))
     return DatasetAggregator(datasets)

@@ -101,6 +101,7 @@ class BaseValidator:
 
         self.plots = {}
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
+        self.head_name = self.dataloader.dataset.data["head_name"]
 
     @smart_inference_mode()
     def __call__(self, trainer=None, model=None):
@@ -108,6 +109,7 @@ class BaseValidator:
         gets priority).
         """
         self.training = trainer is not None
+        print(f"validating {self.head_name} head")
         augment = self.args.augment and (not self.training)
         if self.training:
             self.device = trainer.device
@@ -177,15 +179,18 @@ class BaseValidator:
             with dt[1]:
                 preds = model(batch["img"], augment=augment, return_multiple_heads=True)
 
+            batch["head_name"] = []
+            for i in range(len(batch["im_file"])):
+                batch["head_name"].append(self.head_name)
             # Loss
-            with dt[2]:
-                if self.training:
-                    self.loss += model.loss(batch, preds)[1]
+            # TODO: fix this
+            # with dt[2]:
+            #     if self.training:
+            #         self.loss += model.loss(batch, preds)[1]
 
             # Postprocess
             with dt[3]:
-                # TODO: change
-                preds = self.postprocess(preds[0])
+                preds = self.postprocess(preds[self.head_name])
 
             self.update_metrics(preds, batch)
             if self.args.plots and batch_i < 3:

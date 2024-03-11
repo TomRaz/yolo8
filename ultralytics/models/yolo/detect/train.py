@@ -92,22 +92,19 @@ class DetectionTrainer(BaseTrainer):
         # self.args.box *= 3 / nl  # scale to layers
         # self.args.cls *= self.data["nc"] / 80 * 3 / nl  # scale to classes and layers
         # self.args.cls *= (self.args.imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
-        # TODO TOM: check NC, do it separately for each head
-        self.model.nc = self.datasets[0]["nc"]  # attach number of classes to model
-        self.model.nc = "a"  # attach number of classes to model
         self.model.names = self.datasets[0]["names"]  # attach class names to model
         self.model.args = self.args  # attach hyperparameters to model
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         """Return a YOLO detection model."""
-        heads = []
+        heads = {}
         for i, dataset in enumerate(self.datasets):
             nc = dataset["nc"]
             model = DetectionModel(cfg, nc=nc, verbose=verbose and RANK == -1)
             if weights:
                 model.load(weights)
             head = model.model[-1]  # Detect() module
-            heads.append(head)
+            heads[dataset["head_name"]] = head
 
         model.set_heads(heads)
         return model

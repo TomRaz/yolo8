@@ -4,6 +4,7 @@ import contextlib
 from copy import deepcopy
 from pathlib import Path
 
+import numpy
 import torch
 import torch.nn as nn
 
@@ -233,22 +234,65 @@ class BaseModel(nn.Module):
             preds (torch.Tensor | List[torch.Tensor]): Predictions.
         """
         if not hasattr(self, "criterions"):
-            self.criterions = [self.init_criterion(head) for head in self.heads]
+            self.criterions = {}
+            for head_name, head in self.heads.items():
+                self.criterions[head_name] = self.init_criterion(head)
 
         preds = self.forward(batch["img"], return_multiple_heads=True) if preds is None else preds
         all_loss_items = []
         total_loss = 0
-        for pred, criterion in zip(preds, self.criterions):
-            loss, loss_items = criterion(pred, batch)
-            total_loss += loss
+
+
+        for head_name, criterion in self.criterions.items():
+
+            # get all preds of head according to batch indicies
+            indicies_for_head_name = numpy.array(batch["head_name"]) == head_name
+            pred_for_head = [tensor[indicies_for_head_name] for tensor in preds[head_name]]
+            indicies_in_ints = [int(i) for i in indicies_for_head_name]
+            indices = [i for i, value in enumerate(indicies_for_head_name) if value]
+            if not indices:
+                continue
+            loss, loss_items = criterion(pred_for_head, filter_batch(batch, indices))
+            total_loss += loss / len(self.criterions)
             all_loss_items.append(loss_items)
-        # TODO: divice by number of heads?
         # TODO: return all loss items
         return total_loss, all_loss_items[0]
 
     def init_criterion(self):
         """Initialize the loss criterion for the BaseModel."""
         raise NotImplementedError("compute_loss() needs to be implemented by task heads")
+
+
+def filter_batch(data, indices):
+    # TODO: improve performance and rewrite
+    # Directly filterable properties
+    keys = data.keys()
+    filtered_data = {key: [data[key][i] for i in indices] for key in keys if key not in ["bboxes", "cls", "batch_idx"]}
+
+    # Prepare for one-to-many relation filtering
+    # Initialize new lists for bboxes and cls
+    filtered_data['bboxes'] = []
+    filtered_data['cls'] = []
+    # 'batch_idx' needs to be updated based on filtered indices
+    filtered_data['batch_idx'] = []
+
+    # Mapping from old to new indices
+    idx_map = {old_idx: new_idx for new_idx, old_idx in enumerate(indices)}
+
+    # Filter and update one-to-many related properties
+    for idx, batch_idx in enumerate(data['batch_idx']):
+        if batch_idx.item() in idx_map:
+            filtered_data['bboxes'].append(data['bboxes'][idx])
+            filtered_data['cls'].append(data['cls'][idx])
+            # Update batch_idx to reflect new indices
+            filtered_data['batch_idx'].append(idx_map[batch_idx.item()])
+
+    # Convert lists to the original type if needed (e.g., tensors)
+    filtered_data['bboxes'] = torch.stack(filtered_data['bboxes']) if filtered_data['bboxes'] else torch.tensor([])
+    filtered_data['cls'] = torch.stack(filtered_data['cls']) if filtered_data['cls'] else torch.tensor([])
+    filtered_data['batch_idx'] = torch.tensor(filtered_data['batch_idx']) if filtered_data['batch_idx'] else torch.tensor([])
+
+    return filtered_data
 
 
 class DetectionModel(BaseModel):
@@ -272,7 +316,7 @@ class DetectionModel(BaseModel):
         # Build strides
         m = self.model[-1]  # Detect()
         if isinstance(m, Detect):  # includes all Detect subclasses like Segment, Pose, OBB, WorldDetect
-            # TODO Tom: we might need to change this
+            # TODO: we might need to change this
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, Pose, OBB)) else self.forward(x)
@@ -327,13 +371,13 @@ class DetectionModel(BaseModel):
         if not heads:
             return x
         embedding = x
-        res = []
-        for m in self.heads:
-            if m.f != -1:  # if not from previous layer
-                embedding_tag = y[m.f] if isinstance(m.f, int) else [embedding if j == -1 else y[j] for j in m.f]  # from earlier layers
+        res = {}
+        for head_name, head in self.heads.items():
+            if head.f != -1:  # if not from previous layer
+                embedding_tag = y[head.f] if isinstance(head.f, int) else [embedding if j == -1 else y[j] for j in head.f]  # from earlier layers
             else:
                 embedding_tag = embedding
-            res.append(m(embedding_tag))
+            res[head_name] = head(embedding_tag)
         return res
 
     def _predict_augment(self, x):
@@ -382,50 +426,50 @@ class DetectionModel(BaseModel):
         # return
         # copy detection heads
         self.model = self.model[:-1]
-        self.heads = []
-        for head in heads:
-            self.heads.append(head)
+        self.heads = {}
+        for head_name, head in heads.items():
+            self.heads[head_name] = head
             self.model.append(head)
 
 
     # make sure that calls to half, to, training, etc. are propagated to the heads
-    def half(self):
-        super().half()
-        self.model = self.model.half()
-        res = []
-        for head in self.heads:
-            res.append(head.half())
-        self.heads = res
-        return self
-
-    def to(self, *args, **kwargs):
-        super().to(*args, **kwargs)
-        self.model = self.model.to(*args, **kwargs)
-        res = []
-        if not hasattr(self, "heads") or not self.heads:
-            return self
-        for head in self.heads:
-            res.append(head.to(*args, **kwargs))
-        self.heads = res
-        return self
-
-    def train(self, mode=True):
-        super().train(mode)
-        self.model.train(mode)
-        if not hasattr(self, "heads") or not self.heads:
-            return self
-        for head in self.heads:
-            head.train(mode)
-        return self
-
-    def eval(self):
-        super().eval()
-        self.model.eval()
-        if not hasattr(self, "heads") or not self.heads:
-            return self
-        for head in self.heads:
-            head.eval()
-        return self
+    # def half(self):
+    #     super().half()
+    #     self.model = self.model.half()
+    #     res = []
+    #     for head in self.heads:
+    #         res.append(head.half())
+    #     self.heads = res
+    #     return self
+    #
+    # def to(self, *args, **kwargs):
+    #     super().to(*args, **kwargs)
+    #     self.model = self.model.to(*args, **kwargs)
+    #     res = []
+    #     if not hasattr(self, "heads") or not self.heads:
+    #         return self
+    #     for head in self.heads:
+    #         res.append(head.to(*args, **kwargs))
+    #     self.heads = res
+    #     return self
+    #
+    # def train(self, mode=True):
+    #     super().train(mode)
+    #     self.model.train(mode)
+    #     if not hasattr(self, "heads") or not self.heads:
+    #         return self
+    #     for head in self.heads:
+    #         head.train(mode)
+    #     return self
+    #
+    # def eval(self):
+    #     super().eval()
+    #     self.model.eval()
+    #     if not hasattr(self, "heads") or not self.heads:
+    #         return self
+    #     for head in self.heads:
+    #         head.eval()
+    #     return self
 
 
 
