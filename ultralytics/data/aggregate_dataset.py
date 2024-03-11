@@ -43,9 +43,7 @@ def build_aggregate_dataset(cfg, batch, datas, mode="train", rect=False, stride=
             data=data,
             fraction=cfg.fraction if mode == "train" else 1.0,
         )
-        # TODO: move to config
         samples_per_dataset = min(len(dataset), 100000000)
 
-        # TODO: how to do the randomize thing?
         datasets.append((dataset, samples_per_dataset, data["head_name"]))
     return DatasetAggregator(datasets)
