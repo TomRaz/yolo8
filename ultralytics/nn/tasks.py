@@ -253,6 +253,7 @@ class BaseModel(nn.Module):
             if not indices:
                 continue
             loss, loss_items = criterion(pred_for_head, filter_batch(batch, indices))
+            # TODO: weight losses
             total_loss += loss / len(self.criterions)
             all_loss_items.append(loss_items)
         # TODO: return all loss items

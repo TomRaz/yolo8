@@ -99,6 +99,9 @@ class DetectionTrainer(BaseTrainer):
         """Return a YOLO detection model."""
         heads = {}
         for i, dataset in enumerate(self.datasets):
+            head_name = dataset["head_name"]
+            if head_name in heads:
+                continue
             nc = dataset["nc"]
             model = DetectionModel(cfg, nc=nc, verbose=verbose and RANK == -1)
             if weights:
