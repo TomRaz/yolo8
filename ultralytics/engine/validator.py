@@ -111,7 +111,7 @@ class BaseValidator:
         augment = self.args.augment and (not self.training)
         if self.training:
             self.device = trainer.device
-            self.data = trainer.data
+            # self.data = trainer.data
             self.args.half = self.device.type != "cpu"  # force FP16 val during training
             model = trainer.ema.ema or trainer.model
             model = model.half() if self.args.half else model.float()
@@ -151,7 +151,7 @@ class BaseValidator:
             if not pt:
                 self.args.rect = False
             self.stride = model.stride  # used in get_dataloader() for padding
-            self.dataloader = self.dataloader or self.get_dataloader(self.data.get(self.args.split), self.args.batch)
+            self.dataloader = self.get_dataloader(self.data.get(self.args.split), self.args.batch)
 
             model.eval()
             model.warmup(imgsz=(1 if pt else self.args.batch, 3, imgsz, imgsz))  # warmup
@@ -175,7 +175,7 @@ class BaseValidator:
 
             # Inference
             with dt[1]:
-                preds = model(batch["img"], augment=augment)
+                preds = model(batch["img"], augment=augment, return_multiple_heads=True)
 
             # Loss
             with dt[2]:
@@ -184,7 +184,8 @@ class BaseValidator:
 
             # Postprocess
             with dt[3]:
-                preds = self.postprocess(preds)
+                # TODO: change
+                preds = self.postprocess(preds[0])
 
             self.update_metrics(preds, batch)
             if self.args.plots and batch_i < 3:

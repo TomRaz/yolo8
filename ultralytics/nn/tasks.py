@@ -48,7 +48,6 @@ from ultralytics.nn.modules import (
     SPPELAN,
     CBFuse,
     CBLinear,
-    Silence,
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -88,7 +87,7 @@ class BaseModel(nn.Module):
             return self.loss(x, *args, **kwargs)
         return self.predict(x, *args, **kwargs)
 
-    def predict(self, x, profile=False, visualize=False, augment=False, embed=None):
+    def predict(self, x, profile=False, visualize=False, augment=False, embed=None, return_multiple_heads=False):
         """
         Perform a forward pass through the network.
 
@@ -104,36 +103,9 @@ class BaseModel(nn.Module):
         """
         if augment:
             return self._predict_augment(x)
-        return self._predict_once(x, profile, visualize, embed)
+        return self._predict_once(x, profile, visualize, embed, return_multiple_heads)
 
-    def _predict_once(self, x, profile=False, visualize=False, embed=None):
-        """
-        Perform a forward pass through the network.
 
-        Args:
-            x (torch.Tensor): The input tensor to the model.
-            profile (bool):  Print the computation time of each layer if True, defaults to False.
-            visualize (bool): Save the feature maps of the model if True, defaults to False.
-            embed (list, optional): A list of feature vectors/embeddings to return.
-
-        Returns:
-            (torch.Tensor): The last output of the model.
-        """
-        y, dt, embeddings = [], [], []  # outputs
-        for m in self.model:
-            if m.f != -1:  # if not from previous layer
-                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
-            if profile:
-                self._profile_one_layer(m, x, dt)
-            x = m(x)  # run
-            y.append(x if m.i in self.save else None)  # save output
-            if visualize:
-                feature_visualization(x, m.type, m.i, save_dir=visualize)
-            if embed and m.i in embed:
-                embeddings.append(nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
-                if m.i == max(embed):
-                    return torch.unbind(torch.cat(embeddings, 1), dim=0)
-        return x
 
     def _predict_augment(self, x):
         """Perform augmentations on input image x and return augmented inference."""
@@ -260,11 +232,19 @@ class BaseModel(nn.Module):
             batch (dict): Batch to compute loss on
             preds (torch.Tensor | List[torch.Tensor]): Predictions.
         """
-        if not hasattr(self, "criterion"):
-            self.criterion = self.init_criterion()
+        if not hasattr(self, "criterions"):
+            self.criterions = [self.init_criterion(head) for head in self.heads]
 
-        preds = self.forward(batch["img"]) if preds is None else preds
-        return self.criterion(preds, batch)
+        preds = self.forward(batch["img"], return_multiple_heads=True) if preds is None else preds
+        all_loss_items = []
+        total_loss = 0
+        for pred, criterion in zip(preds, self.criterions):
+            loss, loss_items = criterion(pred, batch)
+            total_loss += loss
+            all_loss_items.append(loss_items)
+        # TODO: divice by number of heads?
+        # TODO: return all loss items
+        return total_loss, all_loss_items[0]
 
     def init_criterion(self):
         """Initialize the loss criterion for the BaseModel."""
@@ -272,10 +252,11 @@ class BaseModel(nn.Module):
 
 
 class DetectionModel(BaseModel):
-    """YOLOv8 detection model."""
 
     def __init__(self, cfg="yolov8n.yaml", ch=3, nc=None, verbose=True):  # model, input channels, number of classes
         """Initialize the YOLOv8 detection model with the given config and parameters."""
+        self.heads = None
+
         super().__init__()
         self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)  # cfg dict
 
@@ -291,6 +272,7 @@ class DetectionModel(BaseModel):
         # Build strides
         m = self.model[-1]  # Detect()
         if isinstance(m, Detect):  # includes all Detect subclasses like Segment, Pose, OBB, WorldDetect
+            # TODO Tom: we might need to change this
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, Pose, OBB)) else self.forward(x)
@@ -305,6 +287,57 @@ class DetectionModel(BaseModel):
         if verbose:
             self.info()
             LOGGER.info("")
+
+    def _predict_once(self, x, profile=False, visualize=False, embed=None, return_multiple_heads=False):
+        """
+        Perform a forward pass through the network.
+
+        Args:
+            x (torch.Tensor): The input tensor to the model.
+            profile (bool):  Print the computation time of each layer if True, defaults to False.
+            visualize (bool): Save the feature maps of the model if True, defaults to False.
+            embed (list, optional): A list of feature vectors/embeddings to return.
+
+        Returns:
+            (torch.Tensor): The last output of the model.
+        """
+        y, dt, embeddings = [], [], []  # outputs
+        # TODO Tom: fix this
+        if return_multiple_heads:
+            models = self.model[:-1]
+        else:
+            models = self.model
+        for m in models:
+            if m.f != -1:  # if not from previous layer
+                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
+            if profile:
+                self._profile_one_layer(m, x, dt)
+            x = m(x)  # run
+            y.append(x if m.i in self.save else None)  # save output
+            if visualize:
+                feature_visualization(x, m.type, m.i, save_dir=visualize)
+            if embed and m.i in embed:
+                embeddings.append(nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
+                if m.i == max(embed):
+                    return torch.unbind(torch.cat(embeddings, 1), dim=0)
+        split_head_done = getattr(self, "split_heads_done", False)
+        if not return_multiple_heads:
+            return x
+        if not split_head_done:
+            return [x]
+
+        heads = getattr(self, "heads", None)
+        if not heads:
+            return x
+        embedding = x
+        res = []
+        for m in self.heads:
+            if m.f != -1:  # if not from previous layer
+                embedding_tag = y[m.f] if isinstance(m.f, int) else [embedding if j == -1 else y[j] for j in m.f]  # from earlier layers
+            else:
+                embedding_tag = embedding
+            res.append(m(embedding_tag))
+        return res
 
     def _predict_augment(self, x):
         """Perform augmentations on input image x and return augmented inference and train outputs."""
@@ -342,9 +375,78 @@ class DetectionModel(BaseModel):
         y[-1] = y[-1][..., i:]  # small
         return y
 
-    def init_criterion(self):
+    def init_criterion(self, head):
         """Initialize the loss criterion for the DetectionModel."""
-        return v8DetectionLoss(self)
+        return v8DetectionLoss(self, head)
+
+    def split_heads(self, num_of_heads):
+        # self.split_heads_done = False
+        # self.heads=[self.model[-1]]
+        # return
+        self.split_heads_done = True
+        # copy detection heads
+        head = self.model[-1]
+        self.model = self.model
+        self.heads = []
+        for i in range(num_of_heads):
+            # TODO Tom: do it separately for each head
+            self.heads.append(head)
+            # new_head = deepcopy(head)
+            # self.heads.append(new_head)
+
+            # new_head.update_num_of_classes(10)
+            # new_head = Detect(nc=10, ch=head.ch)
+            # new_head.f = head.f
+            # self.heads.append(new_head)
+
+        # self.heads = [deepcopy(detection_layer) for _ in range(num_of_heads)]
+        # for head in self.heads:
+        #     head.update_num_of_classes(10)
+        #
+        # # remove detection layer from the model
+        # self.model = self.model[:-1]
+
+    # make sure that calls to half, to, training, etc. are propagated to the heads
+    def half(self):
+        super().half()
+        self.model = self.model.half()
+        res = []
+        for head in self.heads:
+            res.append(head.half())
+        self.heads = res
+        return self
+
+    def to(self, *args, **kwargs):
+        super().to(*args, **kwargs)
+        self.model = self.model.to(*args, **kwargs)
+        res = []
+        if not hasattr(self, "heads") or not self.heads:
+            return self
+        for head in self.heads:
+            res.append(head.to(*args, **kwargs))
+        self.heads = res
+        return self
+
+    def train(self, mode=True):
+        super().train(mode)
+        self.model.train(mode)
+        if not hasattr(self, "heads") or not self.heads:
+            return self
+        for head in self.heads:
+            head.train(mode)
+        return self
+
+    def eval(self):
+        super().eval()
+        self.model.eval()
+        if not hasattr(self, "heads") or not self.heads:
+            return self
+        for head in self.heads:
+            head.eval()
+        return self
+
+
+
 
 
 class OBBModel(DetectionModel):

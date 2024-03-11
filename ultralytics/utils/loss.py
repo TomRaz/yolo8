@@ -147,16 +147,16 @@ class KeypointLoss(nn.Module):
 class v8DetectionLoss:
     """Criterion class for computing training losses."""
 
-    def __init__(self, model):  # model must be de-paralleled
+    def __init__(self, model, head):  # model must be de-paralleled
         """Initializes v8DetectionLoss with the model, defining model-related properties and BCE loss function."""
         device = next(model.parameters()).device  # get model device
         h = model.args  # hyperparameters
 
-        m = model.model[-1]  # Detect() module
+        m = head
         self.bce = nn.BCEWithLogitsLoss(reduction="none")
         self.hyp = h
         self.stride = m.stride  # model strides
-        self.nc = m.nc  # number of classes
+        self.nc = head.nc
         self.no = m.no
         self.reg_max = m.reg_max
         self.device = device

@@ -126,22 +126,10 @@ class BaseTrainer:
 
         # Model and Dataset
         self.model = check_model_file_from_stem(self.args.model)  # add suffix, i.e. yolov8n -> yolov8n.pt
-        try:
-            if self.args.task == "classify":
-                self.data = check_cls_dataset(self.args.data)
-            elif self.args.data.split(".")[-1] in ("yaml", "yml") or self.args.task in (
-                "detect",
-                "segment",
-                "pose",
-                "obb",
-            ):
-                self.data = check_det_dataset(self.args.data)
-                if "yaml_file" in self.data:
-                    self.args.data = self.data["yaml_file"]  # for validating 'yolo train data=url.zip' usage
-        except Exception as e:
-            raise RuntimeError(emojis(f"Dataset '{clean_url(self.args.data)}' error ❌ {e}")) from e
+        self.datasets = []
+        for data in self.args.data:
+            self.datasets.append(check_det_dataset(data))
 
-        self.trainset, self.testset = self.get_dataset(self.data)
         self.ema = None
 
         # Optimization utils init
@@ -288,14 +276,14 @@ class BaseTrainer:
 
         # Dataloaders
         batch_size = self.batch_size // max(world_size, 1)
-        self.train_loader = self.get_dataloader(self.trainset, batch_size=batch_size, rank=RANK, mode="train")
+        self.train_loader = self.get_dataloader(batch_size=batch_size, rank=RANK, mode="train")
         if RANK in (-1, 0):
             # Note: When training DOTA dataset, double batch size could get OOM on images with >2000 objects.
-            self.test_loader = self.get_dataloader(
-                self.testset, batch_size=batch_size if self.args.task == "obb" else batch_size * 2, rank=-1, mode="val"
-            )
-            self.validator = self.get_validator()
-            metric_keys = self.validator.metrics.keys + self.label_loss_items(prefix="val")
+
+            self.validators = self.get_validator(batch_size)
+            metric_keys = []
+            for validator in self.validators:
+                metric_keys += validator.metrics.keys + self.label_loss_items(prefix="val")
             self.metrics = dict(zip(metric_keys, [0] * len(metric_keys)))
             self.ema = ModelEMA(self.model)
             if self.args.plots:
@@ -504,14 +492,6 @@ class BaseTrainer:
         if (self.save_period > 0) and (self.epoch > 0) and (self.epoch % self.save_period == 0):
             torch.save(ckpt, self.wdir / f"epoch{self.epoch}.pt")
 
-    @staticmethod
-    def get_dataset(data):
-        """
-        Get train, val path from data dict if it exists.
-
-        Returns None if data format is not recognized.
-        """
-        return data["train"], data.get("val") or data.get("test")
 
     def setup_model(self):
         """Load/create/download model for any task."""
@@ -548,7 +528,9 @@ class BaseTrainer:
 
         The returned dict is expected to contain "fitness" key.
         """
-        metrics = self.validator(self)
+        metrics = {}
+        for validator in self.validators:
+            metrics.update(validator(self))
         fitness = metrics.pop("fitness", -self.loss.detach().cpu().numpy())  # use loss as fitness measure if not found
         if not self.best_fitness or self.best_fitness < fitness:
             self.best_fitness = fitness

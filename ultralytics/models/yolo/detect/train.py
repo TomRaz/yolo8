@@ -8,6 +8,7 @@ import numpy as np
 import torch.nn as nn
 
 from ultralytics.data import build_dataloader, build_yolo_dataset
+from ultralytics.data.aggregate_dataset import build_aggregate_dataset
 from ultralytics.engine.trainer import BaseTrainer
 from ultralytics.models import yolo
 from ultralytics.nn.tasks import DetectionModel
@@ -30,7 +31,7 @@ class DetectionTrainer(BaseTrainer):
         ```
     """
 
-    def build_dataset(self, img_path, mode="train", batch=None):
+    def build_dataset(self, data, mode="train", batch=None):
         """
         Build YOLO Dataset.
 
@@ -40,19 +41,34 @@ class DetectionTrainer(BaseTrainer):
             batch (int, optional): Size of batches, this is for `rect`. Defaults to None.
         """
         gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
-        return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, rect=mode == "val", stride=gs)
+        # it should also return the index of the dataset
+        if isinstance(data, (list, tuple)):
+            # TODO TOM: change it to dataset aggregator, that implements get item, call the right dataset and return the right item
 
-    def get_dataloader(self, dataset_path, batch_size=16, rank=0, mode="train"):
+            return build_aggregate_dataset(self.args, batch, data, mode=mode, rect=mode == "val", stride=gs)
+        else:
+            return build_yolo_dataset(self.args, batch, data, mode=mode, rect=mode == "val", stride=gs)
+
+    def get_dataloader(self, batch_size=16, rank=0, mode="train"):
         """Construct and return dataloader."""
         assert mode in ["train", "val"]
-        with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
-            dataset = self.build_dataset(dataset_path, mode, batch_size)
-        shuffle = mode == "train"
-        if getattr(dataset, "rect", False) and shuffle:
-            LOGGER.warning("WARNING ⚠️ 'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
-            shuffle = False
         workers = self.args.workers if mode == "train" else self.args.workers * 2
-        return build_dataloader(dataset, batch_size, workers, shuffle, rank)  # return dataloader
+        shuffle = mode == "train"
+
+        with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
+            if mode == "train":
+                dataset = self.build_dataset(self.datasets, mode, batch_size)
+                return build_dataloader(dataset, batch_size, workers, shuffle, rank)  # return dataloader
+            else:
+                res = []
+                for dataset in self.datasets:
+                    dataset = self.build_dataset(dataset, mode, batch_size)
+                    dataloader = build_dataloader(dataset, batch_size, workers, shuffle, rank)  # return dataloader
+                    res.append(dataloader)
+                return res
+
+
+
 
     def preprocess_batch(self, batch):
         """Preprocesses a batch of images by scaling and converting to float."""
@@ -78,24 +94,30 @@ class DetectionTrainer(BaseTrainer):
         # self.args.box *= 3 / nl  # scale to layers
         # self.args.cls *= self.data["nc"] / 80 * 3 / nl  # scale to classes and layers
         # self.args.cls *= (self.args.imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
-        self.model.nc = self.data["nc"]  # attach number of classes to model
-        self.model.names = self.data["names"]  # attach class names to model
+        # TODO TOM: check NC, do it separately for each head
+        self.model.nc = self.datasets[0]["nc"]  # attach number of classes to model
+        self.model.names = self.datasets[0]["names"]  # attach class names to model
         self.model.args = self.args  # attach hyperparameters to model
         # TODO: self.model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         """Return a YOLO detection model."""
-        model = DetectionModel(cfg, nc=self.data["nc"], verbose=verbose and RANK == -1)
+        # TODO Tom: change NC setup
+        model = DetectionModel(cfg, nc=10, verbose=verbose and RANK == -1)
         if weights:
             model.load(weights)
+        model.split_heads(1)
         return model
 
-    def get_validator(self):
+    def get_validator(self, batch_size):
         """Returns a DetectionValidator for YOLO model validation."""
         self.loss_names = "box_loss", "cls_loss", "dfl_loss"
-        return yolo.detect.DetectionValidator(
-            self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks
+        test_loaders = self.get_dataloader(batch_size=batch_size if self.args.task == "obb" else batch_size * 2, rank=-1, mode="val"
         )
+        validators = [yolo.detect.DetectionValidator(
+            test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks
+        ) for test_loader in test_loaders]
+        return validators
 
     def label_loss_items(self, loss_items=None, prefix="train"):
         """
@@ -137,6 +159,7 @@ class DetectionTrainer(BaseTrainer):
         plot_results(file=self.csv, on_plot=self.on_plot)  # save results.png
 
     def plot_training_labels(self):
+        return
         """Create a labeled training plot of the YOLO model."""
         boxes = np.concatenate([lb["bboxes"] for lb in self.train_loader.dataset.labels], 0)
         cls = np.concatenate([lb["cls"] for lb in self.train_loader.dataset.labels], 0)
