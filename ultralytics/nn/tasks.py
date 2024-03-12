@@ -237,6 +237,7 @@ class BaseModel(nn.Module):
             self.criterions = {}
             for head_name, head in self.heads.items():
                 self.criterions[head_name] = self.init_criterion(head)
+            self.criterions = dict(sorted(self.criterions.items()))
 
         preds = self.forward(batch["img"], return_multiple_heads=True) if preds is None else preds
         all_loss_items = []
@@ -251,13 +252,12 @@ class BaseModel(nn.Module):
             indicies_in_ints = [int(i) for i in indicies_for_head_name]
             indices = [i for i, value in enumerate(indicies_for_head_name) if value]
             if not indices:
+                all_loss_items.extend(torch.zeros(3))
                 continue
             loss, loss_items = criterion(pred_for_head, filter_batch(batch, indices))
-            # TODO: weight losses
             total_loss += loss / len(self.criterions)
-            all_loss_items.append(loss_items)
-        # TODO: return all loss items
-        return total_loss, all_loss_items[0]
+            all_loss_items.extend(loss_items)
+        return total_loss, torch.tensor(all_loss_items)
 
     def init_criterion(self):
         """Initialize the loss criterion for the BaseModel."""
@@ -317,7 +317,6 @@ class DetectionModel(BaseModel):
         # Build strides
         m = self.model[-1]  # Detect()
         if isinstance(m, Detect):  # includes all Detect subclasses like Segment, Pose, OBB, WorldDetect
-            # TODO: we might need to change this
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, Pose, OBB)) else self.forward(x)

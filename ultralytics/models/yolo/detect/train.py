@@ -114,7 +114,10 @@ class DetectionTrainer(BaseTrainer):
 
     def get_validator(self, batch_size):
         """Returns a DetectionValidator for YOLO model validation."""
-        self.loss_names = "box_loss", "cls_loss", "dfl_loss"
+        head_names = [dataset["head_name"] for dataset in self.datasets]
+        head_names = sorted(head_names)
+        loss_names = "box_loss", "cls_loss", "dfl_loss"
+        self.loss_names = [f"{head_name}_{loss_name}" for head_name in head_names for loss_name in loss_names]
         test_loaders = self.get_dataloader(batch_size=batch_size if self.args.task == "obb" else batch_size * 2, rank=-1, mode="val"
         )
         validators = [yolo.detect.DetectionValidator(
@@ -137,7 +140,7 @@ class DetectionTrainer(BaseTrainer):
 
     def progress_string(self):
         """Returns a formatted string of training progress with epoch, GPU memory, loss, instances and size."""
-        return ("\n" + "%11s" * (4 + len(self.loss_names))) % (
+        return ("\n" + "%17s" * (4 + len(self.loss_names))) % (
             "Epoch",
             "GPU_mem",
             *self.loss_names,

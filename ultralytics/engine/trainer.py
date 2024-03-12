@@ -403,7 +403,7 @@ class BaseTrainer:
                 losses = self.tloss if loss_len > 1 else torch.unsqueeze(self.tloss, 0)
                 if RANK in (-1, 0):
                     pbar.set_description(
-                        ("%11s" * 2 + "%11.4g" * (2 + loss_len))
+                        ("%17s" * 2 + "%17.4g" * (2 + loss_len))
                         % (f"{epoch + 1}/{self.epochs}", mem, *losses, batch["cls"].shape[0], batch["img"].shape[-1])
                     )
                     self.run_callbacks("on_batch_end")
