@@ -1,5 +1,3 @@
-from torch.utils.data import Dataset
-
 from ultralytics.data import YOLODataset
 from ultralytics.utils import colorstr
 
@@ -20,6 +18,10 @@ class DatasetAggregator(YOLODataset):
                 return sample
             idx -= max_samples_per_ds
         raise IndexError(f"Index {idx} out of range for aggregated dataset")
+
+    def build_transforms(self, hyp=None):
+        for dataset in self.datasets:
+            dataset.build_transforms(hyp)
 
 
 def build_aggregate_dataset(cfg, batch, datas, mode="train", rect=False, stride=32):
@@ -47,3 +49,4 @@ def build_aggregate_dataset(cfg, batch, datas, mode="train", rect=False, stride=
 
         datasets.append((dataset, samples_per_dataset, data["head_name"]))
     return DatasetAggregator(datasets)
+
