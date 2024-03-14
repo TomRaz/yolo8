@@ -20,7 +20,7 @@ class DatasetAggregator(YOLODataset):
         raise IndexError(f"Index {idx} out of range for aggregated dataset")
 
     def build_transforms(self, hyp=None):
-        for dataset in self.datasets:
+        for dataset, max_samples_per_ds, head_name in self.datasets:
             dataset.build_transforms(hyp)
 
 
