@@ -20,8 +20,8 @@ import torch
 from torch import distributed as dist
 from torch import nn, optim
 
-from ultralytics.cfg import get_cfg, get_save_dir
-from ultralytics.data.utils import check_cls_dataset, check_det_dataset
+from ultralytics.cfg import get_cfg
+from ultralytics.data.utils import check_det_dataset
 from ultralytics.nn.tasks import attempt_load_one_weight, attempt_load_weights
 from ultralytics.utils import (
     DEFAULT_CFG,
@@ -30,9 +30,7 @@ from ultralytics.utils import (
     TQDM,
     __version__,
     callbacks,
-    clean_url,
     colorstr,
-    emojis,
     yaml_save,
 )
 from ultralytics.utils.autobatch import check_train_batch_size
@@ -49,6 +47,9 @@ from ultralytics.utils.torch_utils import (
     strip_optimizer,
 )
 
+
+def get_training_output_dir():
+    return os.path.join(os.environ["DATA_DIR"], "models_training", "detection_yolo8")
 
 class BaseTrainer:
     """
@@ -97,17 +98,13 @@ class BaseTrainer:
         """
         self.args = get_cfg(cfg, overrides)
         self.check_resume(overrides)
-        self.device = select_device(self.args.device, self.args.batch)
+        self.device = select_device("cuda:0", self.args.batch)
         self.validator = None
         self.metrics = None
         self.plots = {}
         init_seeds(self.args.seed + 1 + RANK, deterministic=self.args.deterministic)
 
-        # Dirs
-        # self.save_dir = get_save_dir(self.args)
-        # self.args.name = self.save_dir.name  # update name for loggers
-        # TODO: extract to config
-        self.args.save_dir = os.path.join("/home/tom/Projects/models_training/detection_yolo8", self.args.name)
+        self.args.save_dir = os.path.join(get_training_output_dir(), self.args.name)
         self.save_dir = Path(self.args.save_dir)
         self.wdir = self.save_dir / "weights"  # weights dir
         if RANK in (-1, 0):
@@ -633,11 +630,9 @@ class BaseTrainer:
 
                 # Check that resume data YAML exists, otherwise strip to force re-download of dataset
                 ckpt_args = attempt_load_weights(last).args
-                if not Path(ckpt_args["data"]).exists():
-                    ckpt_args["data"] = self.args.data
 
                 resume = True
-                self.args = get_cfg(ckpt_args)
+                # self.args = get_cfg(ckpt_args)
                 self.args.model = str(last)  # reinstate model
                 for k in "imgsz", "batch":  # allow arg updates to reduce memory on resume if crashed due to CUDA OOM
                     if k in overrides:
@@ -716,7 +711,7 @@ class BaseTrainer:
                 f"determining best 'optimizer', 'lr0' and 'momentum' automatically... "
             )
             # nc = getattr(model, "nc", 10)  # number of classes
-            nc = 7 # TODO: check if has any implications
+            nc = 7
             lr_fit = round(0.002 * 5 / (4 + nc), 6)  # lr0 fit equation to 6 decimal places
             name, lr, momentum = ("SGD", 0.01, 0.9) if iterations > 10000 else ("AdamW", lr_fit, 0.9)
             self.args.warmup_bias_lr = 0.0  # no higher than 0.01 for Adam

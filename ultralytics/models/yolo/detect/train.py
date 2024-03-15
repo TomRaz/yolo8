@@ -104,12 +104,14 @@ class DetectionTrainer(BaseTrainer):
                 continue
             nc = dataset["nc"]
             model = DetectionModel(cfg, nc=nc, verbose=verbose and RANK == -1)
-            if weights:
+            if weights and not self.resume:
                 model.load(weights)
             head = model.model[-1]  # Detect() module
             heads[dataset["head_name"]] = head
 
         model.set_heads(heads)
+        if self.resume:
+            model.load(weights)
         return model
 
     def get_validator(self, batch_size):

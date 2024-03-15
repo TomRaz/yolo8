@@ -183,7 +183,6 @@ class BaseValidator:
             for i in range(len(batch["im_file"])):
                 batch["head_name"].append(self.head_name)
             # Loss
-            # TODO: fix this
             # with dt[2]:
             #     if self.training:
             #         self.loss += model.loss(batch, preds)[1]
