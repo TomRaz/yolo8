@@ -102,6 +102,7 @@ class BaseValidator:
         self.plots = {}
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
         self.head_name = self.dataloader.dataset.data["head_name"]
+        self.dataset_name = self.dataloader.dataset.data["dataset_name"]
 
     @smart_inference_mode()
     def __call__(self, trainer=None, model=None):
@@ -109,7 +110,7 @@ class BaseValidator:
         gets priority).
         """
         self.training = trainer is not None
-        print(f"validating {self.head_name} head")
+        print(f"validating {self.dataset_name} head")
         augment = self.args.augment and (not self.training)
         if self.training:
             self.device = trainer.device

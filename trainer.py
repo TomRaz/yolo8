@@ -14,10 +14,11 @@ from ultralytics.engine.trainer import get_training_output_dir
 # TODO: weight losses for diff heads
 
 data = [
-    '/home/tom/Projects/bv-play-break-detection/service/research/scripts/ball.yaml',
-    '/home/tom/Projects/bv-play-break-detection/service/research/scripts/actions.yaml',
-    '/home/tom/Projects/bv-play-break-detection/service/research/scripts/jerseys.yaml',
-    '/home/tom/Projects/bv-play-break-detection/service/research/scripts/players.yaml',
+    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/ball.yaml',
+    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/actions.yaml',
+    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/jerseys.yaml',
+    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/players.yaml',
+    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/players_sports_mot.yaml',
 
 ]
 
@@ -43,8 +44,9 @@ def main(args):
     # run_exp(imgsz=900, name="no_mosaic_and_erasing", mosaic=0, erasing=0, close_mosaic=0)
     # run_exp(imgsz=900, name="no_mosaic_and_erasing_shear=0.2_perspective=0.2", mosaic=0, erasing=0, shear=0.2, perspective=0.2,
     #         close_mosaic=0)
-    # run_exp(imgsz=1200, name="img_size_1200_not_closing_mosaic", close_mosaic=0, resume=True, batch=12)
-    run_exp(imgsz=1200, name="img_size_1200_yolov8l",  close_mosaic=0, batch=8, base_model="yolov8l.pt")
+    # run_exp(imgsz=1200, name="delete", close_mosaic=0, batch=12)
+    run_exp(imgsz=1200, name="with_players_mot", close_mosaic=0, batch=12)
+    # run_exp(imgsz=1200, name="img_size_1200_yolov8l",  close_mosaic=0, batch=8, base_model="yolov8l.pt")
     # run_exp(imgsz=1056, name="img_size_1200_half_close_mosaic_last_10", close_mosaic=10, half=True)
 
     # run_exp(imgsz=900, name="higher_cls_loss_weight_cls=2box=5", cls=2, box=5, close_mosaic=0)

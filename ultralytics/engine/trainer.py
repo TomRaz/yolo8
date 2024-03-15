@@ -285,7 +285,7 @@ class BaseTrainer:
             for validator in self.validators:
                 metrics = validator.metrics.keys
                 # preprend the name of head
-                metrics = [f"{validator.head_name}_{metric}" for metric in metrics]
+                metrics = [f"{validator.dataset_name}_{metric}" for metric in metrics]
                 metric_keys += metrics + self.label_loss_items(prefix="val")
             self.metrics = dict(zip(metric_keys, [0] * len(metric_keys)))
             self.ema = ModelEMA(self.model)
@@ -538,8 +538,7 @@ class BaseTrainer:
             metrics_for_validator = validator(self)
             fitness = metrics_for_validator.pop("fitness", -self.loss.detach().cpu().numpy())  # use loss as fitness measure if not found
             fitness_scores.append(fitness)
-            metrics.update({f"{validator.head_name}_{k}": v for k, v in metrics_for_validator.items()})
-
+            metrics.update({f"{validator.dataset_name}_{k}": v for k, v in metrics_for_validator.items()})
 
         fitness = sum(fitness_scores) / len(fitness_scores)
         if not self.best_fitness or self.best_fitness < fitness:

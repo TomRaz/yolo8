@@ -1,3 +1,5 @@
+from collections import Counter
+
 from ultralytics.data import YOLODataset
 from ultralytics.utils import colorstr
 
@@ -23,6 +25,17 @@ class DatasetAggregator(YOLODataset):
         for dataset, max_samples_per_ds, head_name in self.datasets:
             dataset.build_transforms(hyp)
 
+    def print_dataset_info(self):
+        # print the number of samples in each dataset, also fractions
+        counter = Counter()
+        for dataset, max_samples_per_ds, head_name in self.datasets:
+            counter[dataset.data["dataset_name"]] = max_samples_per_ds
+        print(f"Total {sum(counter.values())} ({', '.join(f'{k}: {v / sum(counter.values()) * 100:.2f}%' for k, v in counter.items())})")
+
+    def shuffle(self):
+        for dataset, _, _ in self.datasets:
+            dataset.shuffle()
+
 
 def build_aggregate_dataset(cfg, batch, datas, mode="train", rect=False, stride=32):
     datasets = []
@@ -45,8 +58,9 @@ def build_aggregate_dataset(cfg, batch, datas, mode="train", rect=False, stride=
             data=data,
             fraction=cfg.fraction if mode == "train" else 1.0,
         )
-        samples_per_dataset = min(len(dataset), 100000000)
+        samples_per_dataset = data.get("images_per_epoch", len(dataset))
 
         datasets.append((dataset, samples_per_dataset, data["head_name"]))
-    return DatasetAggregator(datasets)
-
+    agg = DatasetAggregator(datasets)
+    agg.print_dataset_info()
+    return agg
