@@ -8,18 +8,14 @@ import torch
 from ultralytics import YOLO
 from ultralytics.engine.trainer import get_training_output_dir
 
-# TODO: add public volley
-# TODO: add sports mot and limit number of samples in a randomize way
-# TODO: add beach data
 # TODO: weight losses for diff heads
 
 data = [
-    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/ball.yaml',
-    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/actions.yaml',
-    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/jerseys.yaml',
-    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/players.yaml',
-    '/home/tom/Projects/bv-play-break-detection/service/research/tracking/yolo8/players_sports_mot.yaml',
-
+    'ball-tracking',
+    "beach_actions_merge_freeball_receive",
+    "coco_manual_merge_freeball_receive_minor_ds_fixes_applied",
+    "jersey",
+    "players_detections"
 ]
 
 
@@ -32,6 +28,7 @@ def run_exp(**kwargs):
         model = YOLO(base_model_path)
         model.train(data=data, epochs=kwargs.get("epochs", 50), **kwargs)
     except Exception as e:
+        raise
         print(e)
     finally:
         gc.collect()
@@ -45,7 +42,9 @@ def main(args):
     # run_exp(imgsz=900, name="no_mosaic_and_erasing_shear=0.2_perspective=0.2", mosaic=0, erasing=0, shear=0.2, perspective=0.2,
     #         close_mosaic=0)
     # run_exp(imgsz=1200, name="delete", close_mosaic=0, batch=12)
-    run_exp(imgsz=1200, name="with_players_mot", close_mosaic=0, batch=12)
+    # run_exp(imgsz=1200, name="with_players_mot", close_mosaic=0, batch=12)
+    # run_exp(imgsz=1200, name="with_beach", close_mosaic=0, batch=12)
+    run_exp(imgsz=1200, name="removing_wrong_annotations_except_jersey", close_mosaic=0, batch=12)
     # run_exp(imgsz=1200, name="img_size_1200_yolov8l",  close_mosaic=0, batch=8, base_model="yolov8l.pt")
     # run_exp(imgsz=1056, name="img_size_1200_half_close_mosaic_last_10", close_mosaic=10, half=True)
 
