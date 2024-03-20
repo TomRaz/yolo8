@@ -26,7 +26,7 @@ def run_exp(**kwargs):
         if kwargs.get("resume", False):
             base_model_path = os.path.join(get_training_output_dir(), kwargs["name"], "weights", "last.pt")
         model = YOLO(base_model_path)
-        model.train(data=data, epochs=kwargs.get("epochs", 50), **kwargs)
+        model.train(data=data, save_period=1, epochs=kwargs.pop("epochs", 50), **kwargs)
     except Exception as e:
         raise
         print(e)
@@ -44,7 +44,8 @@ def main(args):
     # run_exp(imgsz=1200, name="delete", close_mosaic=0, batch=12)
     # run_exp(imgsz=1200, name="with_players_mot", close_mosaic=0, batch=12)
     # run_exp(imgsz=1200, name="with_beach", close_mosaic=0, batch=12)
-    run_exp(imgsz=1200, name="removing_wrong_annotations_except_jersey", close_mosaic=0, batch=12)
+    run_exp(imgsz=1200, name="removing_wrong_annotations_except_jersey_2", close_mosaic=0, batch=12, epochs=70)
+    # run_exp(imgsz=1200, name="delete", close_mosaic=0, batch=12, epochs=2)
     # run_exp(imgsz=1200, name="img_size_1200_yolov8l",  close_mosaic=0, batch=8, base_model="yolov8l.pt")
     # run_exp(imgsz=1056, name="img_size_1200_half_close_mosaic_last_10", close_mosaic=10, half=True)
 

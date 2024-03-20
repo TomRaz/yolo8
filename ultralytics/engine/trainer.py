@@ -610,8 +610,9 @@ class BaseTrainer:
     def final_eval(self):
         """Performs final evaluation and validation for object detection YOLO model."""
         for f in self.last, self.best:
+            best_stripped_path = f.with_suffix(".stripped.pt")
             if f.exists():
-                strip_optimizer(f)  # strip optimizers
+                strip_optimizer(f, str(best_stripped_path))
                 if f is self.best:
                     LOGGER.info(f"\nValidating {f}...")
                     # self.validator.args.plots = self.args.plots
